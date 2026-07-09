@@ -1,0 +1,45 @@
+/* High-Contrast Mode override — conditionally appended after style.css.
+   Redeclares the same custom properties with a strict yellow-on-black
+   scheme (WCAG AAA, 7:1+ contrast), so every rule already using
+   var(--color-*) picks it up automatically -- no extra selectors needed. */
+
+:root {
+    --color-bg: #000000;
+    --color-surface: #000000;
+    --color-surface-raised: #1a1a1a;
+    --color-border: #FFFF00;
+    --color-text: #FFFFFF;
+    --color-text-muted: #FFFF00;
+    --color-accent: #FFFF00;
+    --color-accent-dark: #E6E600;
+    --color-accent-text: #FFFF00;
+    --color-btn-primary: #FFFF00;
+    --color-btn-primary-hover: #E6E600;
+    --color-success: #00FF66;
+    --color-error: #FF5C4D;
+}
+
+/* Yellow buttons carry black text (declared below); the dark kbd chip from
+   the base stylesheet would vanish on yellow -- invert it here. */
+[data-testid^="stBaseButton"] kbd {
+    background: #000000 !important;
+    color: #FFFF00 !important;
+    border: 1px solid #000000 !important;
+}
+
+[data-testid="stAppViewContainer"] {
+    background: #000000 !important;
+}
+
+.hero,
+[data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #000000 !important;
+    border: 2px solid #FFFF00 !important;
+}
+
+.stButton > button,
+[data-testid^="stBaseButton"] {
+    color: #000000 !important;
+}

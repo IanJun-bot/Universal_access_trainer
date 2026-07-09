@@ -1,0 +1,639 @@
+/* Universal Adaptive Fitness Coach — visual design
+   Dark, high-contrast, refined: near-black base, System Blue/Green/Red
+   semantic accents, Inter for crisp high-legibility type (falls back to the
+   native system stack offline), 8px spacing rhythm, defined cards, spring-y
+   button press. Motion stays minimal and respects prefers-reduced-motion. */
+
+/* Barlow Condensed (athletic, energetic display) for headings; Barlow
+   (highly legible, NOT condensed) for body/UI -- a purpose-built fitness
+   pairing that keeps body text accessible. Falls back to the system stack
+   offline. */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap');
+
+:root {
+    --color-bg: #000000;
+    --color-surface: #1C1C1E;
+    --color-surface-raised: #2C2C2E;
+    --color-border: #3A3A3C;
+    --color-text: rgba(255, 255, 255, 0.92);
+    --color-text-muted: rgba(255, 255, 255, 0.60);
+    --color-accent: #007AFF;
+    --color-accent-dark: #0060D1;
+    /* Contrast-safe variants, added after an axe-core WCAG AA audit:
+       #007AFF measures ~4.0-4.3:1 against these dark surfaces -- just under
+       the 4.5:1 AA bar. Use --color-accent-text for any blue TEXT on dark,
+       and --color-btn-primary for filled buttons carrying white text. The
+       original accent stays for non-text uses (glows, borders, tab strip). */
+    --color-accent-text: #4DA3FF;
+    --color-btn-primary: #0066CC;
+    --color-btn-primary-hover: #0052A3;
+    --color-success: #34C759;
+    --color-error: #FF3B30;
+    --radius-lg: 20px;
+    --radius-md: 12px;
+    --shadow-card: 0 10px 40px rgba(0, 0, 0, 0.55);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-smooth: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --transition-fast: 200ms var(--ease-smooth);
+    --font-system: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ---------- base ---------- */
+
+html, body, [class*="css"] {
+    font-family: var(--font-system);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+    color: var(--color-text);
+    font-size: 17px;
+    line-height: 1.5;
+}
+
+/* Streamlit's Material icons render as font ligatures -- never let the UI
+   font-family leak onto them, or they show as raw text ("auto_awesome",
+   "arrow_down") instead of glyphs. */
+[data-testid="stIconMaterial"],
+span[class*="material-symbols"],
+span[class*="material-icons"] {
+    font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Icons' !important;
+    /* The icon font is only defined at weight 400 -- if the icon inherits a
+       heavier weight from a button/heading, the glyph can't be found and the
+       ligature shows as raw text ("auto_awesome"). Pin it. */
+    font-weight: 400 !important;
+    letter-spacing: normal !important;
+    font-feature-settings: 'liga' !important;
+    text-transform: none !important;
+}
+
+h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+    font-family: var(--font-display);
+    color: #FFFFFF;
+    font-weight: 700;
+    letter-spacing: 0.005em;
+}
+
+/* Hide the anchor-link icon Streamlit shows on heading hover -- pure clutter
+   in this app, and it flashes a link cursor the user noticed. */
+[data-testid="stHeaderActionElements"],
+.stMarkdown a.headerlink,
+h1 > a, h2 > a, h3 > a, h4 > a {
+    display: none !important;
+}
+
+[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at 20% 0%, #1a1a2e 0%, transparent 45%),
+        radial-gradient(circle at 100% 30%, #16202e 0%, transparent 50%),
+        var(--color-bg);
+    background-attachment: fixed;
+    background-size: 130% 130%, 130% 130%, 100% 100%;
+    animation: ambientBreathe 90s ease-in-out infinite;
+}
+
+@keyframes ambientBreathe {
+    0%, 100% { background-position: 20% 0%, 100% 30%, 0 0; }
+    50% { background-position: 24% 4%, 96% 34%, 0 0; }
+}
+
+/* Header keeps a solid backing so scrolled content can't show through behind
+   the Deploy/menu buttons -- a fully transparent header let page content
+   visually collide with them (reported as "overlapping elements"). */
+[data-testid="stHeader"] {
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Streamlit's own Deploy/menu chrome is irrelevant to this app's users and
+   was sitting ahead of the actual controls in Tab order -- a real cost for
+   a keyboard/screen-reader-only user with nothing to show for it. Hidden
+   elements are also removed from the tab order, so this fixes both. */
+[data-testid="stToolbar"],
+[data-testid="stMainMenu"],
+[data-testid="stMainMenuButton"],
+[data-testid="stAppDeployButton"],
+[data-testid="stStatusWidget"],
+[data-testid="stHeaderActionElements"] {
+    display: none !important;
+}
+
+/* Help/tooltip icons on checkboxes add a focusable stop for every one --
+   pure noise for a keyboard/screen-reader user (the labels are self-
+   explanatory). Remove them from the page and the tab order. */
+button[aria-label^="Help for"],
+[data-testid="stTooltipHoverTarget"] {
+    display: none !important;
+}
+
+/* Heading "link to this heading" anchors -- another focusable-but-useless
+   stop for a screen reader. */
+a[aria-label*="heading" i],
+a[href^="#"][class*="headerlink"],
+h1 a[href^="#"], h2 a[href^="#"], h3 a[href^="#"], h4 a[href^="#"] {
+    display: none !important;
+}
+
+.block-container {
+    padding-top: 1.5rem;
+    max-width: 760px;
+}
+
+/* ---------- hero banner ---------- */
+
+.hero {
+    background: #16161A;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    padding: 2rem 2.25rem;
+    margin-bottom: 1.75rem;
+    box-shadow: var(--shadow-card);
+    animation: fadeInDown 500ms var(--ease-smooth) both;
+}
+
+.hero h1 {
+    color: #FFFFFF;
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.4rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.hero p {
+    color: var(--color-text-muted);
+    font-size: 1rem;
+    margin: 0;
+    max-width: 56ch;
+}
+
+.hero-icon {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+}
+
+/* ---------- tabs ---------- */
+
+[data-testid="stTabs"] button[role="tab"] {
+    font-family: var(--font-system);
+    font-weight: 600;
+    font-size: 1.02rem;
+    color: var(--color-text-muted);
+    padding: 0.75rem 1.1rem;
+    min-height: 44px;
+    transition: color var(--transition-fast);
+}
+
+[data-testid="stTabs"] button[role="tab"]:hover {
+    color: #FFFFFF;
+}
+
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    color: #FFFFFF;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    background-color: var(--color-accent);
+    height: 3px;
+}
+
+[data-testid="stTabs"] [data-baseweb="tab-border"] {
+    background-color: var(--color-border);
+}
+
+/* ---------- card containers (st.container(border=True)) ---------- */
+
+[data-testid="stLayoutWrapper"] > [data-testid="stVerticalBlock"] {
+    background: #131316 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: var(--shadow-card);
+    padding: 1.5rem 1.5rem !important;
+    gap: 1rem;
+}
+
+/* ---------- inputs ---------- */
+
+/* The visible bordered box is the BaseWeb wrapper -- style THAT, and let the
+   inner <input> sit transparent inside it. Putting the border/height on the
+   raw <input> (the old approach) let the wrapper clip it, which read as
+   short boxes with cut-off text. */
+.stTextInput [data-baseweb="base-input"],
+.stTextInput [data-baseweb="input"] {
+    background: var(--color-surface) !important;
+    border: 1.5px solid var(--color-border) !important;
+    border-radius: var(--radius-md) !important;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.stTextInput input,
+.stTextArea textarea {
+    font-family: var(--font-system);
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: var(--color-text) !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    min-height: 52px;
+    line-height: 1.5;
+    padding: 0.75rem 0.95rem !important;
+}
+
+.stTextArea textarea {
+    border: 1.5px solid var(--color-border) !important;
+    border-radius: var(--radius-md) !important;
+    background: var(--color-surface) !important;
+}
+
+.stTextInput input::placeholder,
+.stTextArea textarea::placeholder {
+    color: rgba(255, 255, 255, 0.38) !important;
+    font-weight: 400;
+}
+
+.stTextInput [data-baseweb="base-input"]:hover,
+.stTextInput [data-baseweb="input"]:hover,
+.stTextArea textarea:hover {
+    background: var(--color-surface-raised) !important;
+    border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+.stTextInput:focus-within [data-baseweb="base-input"],
+.stTextInput:focus-within [data-baseweb="input"],
+.stTextArea textarea:focus {
+    background: var(--color-surface-raised) !important;
+    border-color: var(--color-accent) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.25) !important;
+}
+
+/* ---------- slider (speech pace) ---------- */
+
+[data-baseweb="slider"] [role="slider"] {
+    background-color: var(--color-accent) !important;
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.25) !important;
+}
+
+[data-baseweb="slider"] > div > div {
+    background: var(--color-accent) !important;
+}
+
+[data-testid="stSliderThumbValue"] p,
+[data-testid="stSliderTickBar"] {
+    color: var(--color-accent-text) !important;
+    font-weight: 600;
+}
+
+.stTextInput label, .stTextArea label, .stFileUploader label, .stCheckbox label p {
+    font-family: var(--font-system);
+    font-weight: 600 !important;
+    color: var(--color-text) !important;
+}
+
+.stCheckbox input {
+    accent-color: var(--color-accent);
+}
+
+/* Let checkbox labels wrap to a second line instead of being clipped -- the
+   two accessibility toggles ("Screen reader mode", "High contrast") sit in
+   narrow side-by-side columns. */
+.stCheckbox label {
+    align-items: flex-start !important;
+}
+.stCheckbox label p {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.3 !important;
+}
+
+[data-testid="stFileUploaderDropzone"] {
+    border-radius: var(--radius-md);
+    border: 2px dashed var(--color-border);
+    background: var(--color-surface);
+    transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+[data-testid="stFileUploaderDropzone"]:hover {
+    border-color: var(--color-accent);
+    background: var(--color-surface-raised);
+}
+
+/* ---------- camera input ---------- */
+
+/* NOTE: do not put `overflow: hidden` on this container. After capture,
+   Streamlit swaps the live feed for the captured still image plus a
+   "Clear photo" (retake) button, and clipping the container hides both --
+   the widget looks like it froze with no picture and no way to retake.
+   Style the button only; leave the container's layout to Streamlit. */
+
+/* The camera's internal "Take Photo" button has its own testid
+   (stCameraInputButton), so it misses the stBaseButton-* rules -- style it
+   to match, including the 44px minimum touch target. */
+[data-testid="stCameraInputButton"] {
+    font-family: var(--font-system);
+    font-weight: 600;
+    min-height: 44px !important;
+    color: #FFFFFF !important;
+    background: var(--color-btn-primary) !important;
+    border: none !important;
+    transition: background var(--transition-fast);
+}
+
+[data-testid="stCameraInputButton"]:hover:not(:disabled) {
+    background: var(--color-btn-primary-hover) !important;
+}
+
+[data-testid="stCameraInputButton"]:disabled {
+    background: var(--color-surface-raised) !important;
+    color: var(--color-text-muted) !important;
+}
+
+/* ---------- buttons ---------- */
+
+.stButton > button,
+[data-testid^="stBaseButton"] {
+    font-family: var(--font-system);
+    font-weight: 600;
+    font-size: 1rem;
+    border-radius: 999px !important;
+    min-height: 44px !important;
+    height: auto !important;
+    padding: 0.6rem 1.6rem !important;
+    /* Press-down uses a quick, snappy ease (see :active below); releasing
+       back to rest uses the spring curve so it settles with a slight
+       overshoot bounce instead of a flat linear return. */
+    transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), transform 350ms var(--ease-spring);
+}
+
+/* Primary: the one action that matters most on the screen (Generate & speak,
+   Check my form). Secondary: everything else, including the quick-select
+   exercise chips -- visually quieter so it doesn't compete with primary. */
+[data-testid="stBaseButton-primary"] {
+    color: #FFFFFF !important;
+    background: var(--color-btn-primary) !important;
+    border: none !important;
+    box-shadow: 0 2px 12px rgba(0, 122, 255, 0.35);
+}
+
+[data-testid="stBaseButton-primary"]:hover:not(:disabled) {
+    background: var(--color-btn-primary-hover) !important;
+    box-shadow: 0 0 30px rgba(0, 122, 255, 0.5);
+}
+
+[data-testid="stBaseButton-secondary"] {
+    color: var(--color-text) !important;
+    background: transparent !important;
+    border: 2px solid var(--color-border) !important;
+}
+
+[data-testid="stBaseButton-secondary"]:hover:not(:disabled) {
+    border-color: var(--color-accent) !important;
+    color: #FFFFFF !important;
+    background: var(--color-surface-raised) !important;
+}
+
+.stButton > button:active:not(:disabled),
+[data-testid^="stBaseButton"]:active:not(:disabled) {
+    transform: scale(0.97);
+    transition: transform 100ms var(--ease-smooth);
+}
+
+.stButton > button:disabled,
+[data-testid^="stBaseButton"]:disabled {
+    background: var(--color-surface-raised) !important;
+    color: var(--color-text-muted) !important;
+    box-shadow: none;
+}
+
+.stButton > button:focus-visible,
+.stTextInput input:focus-visible,
+.stTextArea textarea:focus-visible,
+[data-testid="stTabs"] button[role="tab"]:focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 2px;
+}
+
+/* ---------- results: gentle entrance ---------- */
+
+[data-testid="stAudio"],
+[data-testid="stImage"],
+.result-card,
+.script-card {
+    animation: fadeInUp 420ms var(--ease-smooth) both;
+}
+
+.result-card,
+.script-card {
+    border-radius: var(--radius-md);
+    padding: 1.1rem 1.3rem;
+    font-family: var(--font-system);
+    color: var(--color-text);
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+.result-card {
+    background: rgba(52, 199, 89, 0.08);
+    border: 1px solid rgba(52, 199, 89, 0.35);
+    border-left: 4px solid var(--color-success);
+}
+
+.script-card {
+    background: rgba(0, 122, 255, 0.08);
+    border: 1px solid rgba(0, 122, 255, 0.35);
+    border-left: 4px solid var(--color-accent);
+}
+
+.result-card h4,
+.script-card h4 {
+    font-family: var(--font-system);
+    margin: 0 0 0.5rem 0;
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.result-card h4 {
+    color: var(--color-success);
+}
+
+.script-card h4 {
+    color: var(--color-accent-text);
+}
+
+/* ---------- spinner ---------- */
+
+[data-testid="stSpinner"] p {
+    font-family: var(--font-system);
+    color: var(--color-accent-text);
+    font-weight: 600;
+}
+
+[data-testid="stSpinner"] svg {
+    color: var(--color-accent) !important;
+}
+
+/* A gentle pulsing glow around the spinner so waiting reads as "the system
+   is alive and working," not a frozen page. */
+[data-testid="stSpinner"] {
+    border-radius: var(--radius-md);
+    animation: spinnerPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes spinnerPulse {
+    0%, 100% { filter: drop-shadow(0 0 0px rgba(0, 122, 255, 0)); }
+    50% { filter: drop-shadow(0 0 6px rgba(0, 122, 255, 0.5)); }
+}
+
+/* ---------- alerts ---------- */
+
+[data-testid="stAlert"] {
+    border-radius: var(--radius-md);
+    font-family: var(--font-system);
+}
+
+/* warning/error alerts get the System Red treatment */
+[data-testid="stAlertContentWarning"],
+[data-testid="stAlertContentError"] {
+    color: var(--color-error) !important;
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- motion accessibility ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ---------- shortcut key badges (axe: contrast) ---------- */
+
+[data-testid^="stBaseButton"] kbd {
+    background: rgba(0, 0, 0, 0.55) !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(255, 255, 255, 0.35) !important;
+    border-radius: 4px;
+}
+
+/* ---------- safety disclaimer ---------- */
+
+.disclaimer {
+    background: rgba(255, 159, 10, 0.10);
+    border: 1px solid rgba(255, 159, 10, 0.35);
+    border-left: 4px solid #FF9F0A;
+    border-radius: var(--radius-md);
+    padding: 0.7rem 1rem;
+    margin: 0 0 1.25rem 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+}
+.disclaimer b { color: var(--color-text); font-weight: 700; }
+
+/* ---------- voice-first blind screen ---------- */
+
+/* Recording-status hero: large, centered, unmistakable state for a sighted
+   helper / low-vision user, matching the voice-first "clear listening
+   state" pattern. */
+.voice-status {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.1rem;
+    border-radius: var(--radius-lg);
+    background: rgba(0, 122, 255, 0.08);
+    border: 1px solid rgba(0, 122, 255, 0.30);
+}
+
+.voice-status-text h3 {
+    margin: 0 0 0.15rem 0;
+    font-size: 1.35rem;
+    color: #FFFFFF;
+}
+
+.voice-status-text p {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.voice-status-text b {
+    color: var(--color-accent-text, var(--color-accent));
+    font-weight: 700;
+}
+
+/* Pulsing state dot: blue "ready", green "speaking". */
+.voice-dot {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    animation: voicePulse 1.6s ease-in-out infinite;
+}
+
+.voice-dot.ready { background: var(--color-accent); box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.5); }
+.voice-dot.speaking { background: var(--color-success); box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.5); }
+
+@keyframes voicePulse {
+    0% { box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.45); }
+    70% { box-shadow: 0 0 0 14px rgba(0, 122, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 122, 255, 0); }
+}
+
+/* Give the mic widget room to breathe -- its built-in waveform + timer are
+   the live recording indicator, so make them the visual centerpiece. */
+[data-testid="stAudioInput"] {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 0.4rem 0.6rem;
+    background: var(--color-surface);
+}
+
+[data-testid="stAudioInputWaveSurfer"] {
+    min-height: 56px;
+}
+
+/* Even quick-select chips: keep every label on one line so one long label
+   ("Shoulder press") doesn't grow taller than its neighbors. */
+[data-testid="stExpander"] .stButton > button,
+.stColumns .stButton > button {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.9rem;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+}
+/* the label span inside also needs to clip, or it spills past the button */
+[data-testid="stExpander"] .stButton > button p,
+.stColumns .stButton > button p {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}

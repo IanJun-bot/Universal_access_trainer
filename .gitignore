@@ -1,0 +1,44 @@
+# --- Secrets (NEVER commit) ---
+.env
+.env.local
+*.key
+
+# --- Python virtual environment ---
+venv/
+.venv/
+env/
+
+# --- Python caches / build ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Large model assets (downloaded during setup, not versioned) ---
+# Piper voice model (~61MB) -- fetched via `python -m piper.download_voices`
+*.onnx
+*.onnx.json
+
+# --- Piper source-repo folder (not needed; pip package is used) ---
+piper-master/
+
+# --- Generated / runtime artifacts ---
+*.log
+eval_results.json
+eval_photos/
+test_output.wav
+_test*
+_verify*
+_pre.jpg
+
+# --- Editor / OS cruft ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# --- Local tooling config ---
+.claude/
+
+# --- Local-only notes (kept local, not published) ---
+*_REPORT.md
