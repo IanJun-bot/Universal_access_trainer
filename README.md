@@ -171,3 +171,17 @@ before using it with a real person.
 — it can catch position errors but not tempo, control, or momentum
 issues that only show up mid-rep.
 
+## License
+
+This project's own source code is released under the **MIT License** — see
+[`LICENSE`](LICENSE). Use it, modify it, ship it; just keep the copyright and
+license notice.
+
+It relies on third-party libraries and machine-learning models that carry their
+own licenses, which are **not** covered by the MIT license above. Most are
+permissive (Apache-2.0 / MIT), but one — **Llama 3.1**, used for script drafting
+— is under Meta's Llama 3.1 Community License, which is *not* a standard
+open-source license and has usage restrictions. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full list, and read
+that model's terms before deploying.
+
