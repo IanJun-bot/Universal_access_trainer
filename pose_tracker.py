@@ -34,16 +34,38 @@ Same secure-origin rule as the camera/mic: the webcam needs localhost/HTTPS.
 
 POSE_TRACKER_HEIGHT = 800
 
+# High-Contrast override for the tracker iframe. Iframes see none of the
+# parent page's CSS, so the app injects this in place of /*THEME_OVERRIDE*/
+# (see render call in app.py) when High-Contrast mode is on. It redeclares
+# the same :root variables the styles below already consume -- including the
+# skeleton color, which the JS reads from --accent at startup.
+TRACKER_HC_CSS = """
+  :root {
+    --accent: #FFFF00; --success: #00FF66; --warn: #FF9F0A; --error: #FF5C4D;
+    --text: #FFFFFF; --muted: #FFFF00; --surface: #000000;
+    --chipbg: #000000;
+  }
+  select { border-color: #FFFF00 !important; }
+  .stage { border: 2px solid #FFFF00 !important; }
+  .chip, .cue, .form { border: 1px solid #FFFF00; }
+"""
+
 # Kept as a plain string (not an f-string) -- the JS is full of braces.
 POSE_TRACKER_HTML = r"""
 <!DOCTYPE html>
 <html>
 <head>
 <style>
+  /* Iframes do NOT inherit the parent page's fonts -- without this import the
+     tracker silently falls back to the system stack while the rest of the app
+     renders Barlow. */
+  @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap');
   :root {
     --accent: #007AFF; --success: #34C759; --warn: #FF9F0A; --error: #FF3B30;
     --text: rgba(255,255,255,0.92); --muted: rgba(255,255,255,0.6); --surface: #131316;
+    --chipbg: rgba(0,0,0,0.68);
     --font: "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-display: "Barlow Condensed", "Barlow", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   html, body { margin: 0; padding: 0; background: transparent; font-family: var(--font); color: var(--text); }
   .wrap { display: flex; flex-direction: column; gap: 12px; }
@@ -55,17 +77,18 @@ POSE_TRACKER_HTML = r"""
   canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
   .hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
   .chips { display: flex; gap: 8px; }
-  .chip { background: rgba(0,0,0,0.68); border-radius: 10px; padding: 8px 14px; }
+  .chip { background: var(--chipbg); border-radius: 10px; padding: 8px 14px; }
   .chip .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-  .chip .value { font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .chip .value { font-family: var(--font-display); font-size: 32px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .depthwrap { position: absolute; right: 10px; bottom: 64px; top: 84px; width: 14px; background: rgba(0,0,0,0.55); border-radius: 7px; overflow: hidden; }
   .depthfill { position: absolute; bottom: 0; left: 0; right: 0; height: 0%; background: var(--accent); transition: height 80ms linear, background 200ms; }
-  .cue { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); font-size: 26px; font-weight: 800; letter-spacing: 0.03em; background: rgba(0,0,0,0.68); padding: 6px 18px; border-radius: 999px; text-align: center; }
-  .form { position: absolute; left: 10px; right: 10px; bottom: 10px; font-size: 18px; font-weight: 600; text-align: center; background: rgba(0,0,0,0.62); border-radius: 10px; padding: 8px 12px; min-height: 22px; }
+  .cue { position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); font-family: var(--font-display); font-size: 28px; font-weight: 700; letter-spacing: 0.03em; background: var(--chipbg); padding: 6px 18px; border-radius: 999px; text-align: center; }
+  .form { position: absolute; left: 10px; right: 10px; bottom: 10px; font-size: 18px; font-weight: 600; text-align: center; background: var(--chipbg); border-radius: 10px; padding: 8px 12px; min-height: 22px; }
   .statusbar { font-size: 15px; color: var(--muted); min-height: 22px; }
   .hints { font-size: 14px; color: var(--muted); line-height: 1.5; }
   .hints b { color: var(--text); }
   .sound { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; user-select: none; }
+  /*THEME_OVERRIDE*/
 </style>
 </head>
 <body>
@@ -103,6 +126,11 @@ POSE_TRACKER_HTML = r"""
 <script type="module">
 import { PoseLandmarker, FilesetResolver, DrawingUtils } from
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+// Skeleton color follows the CSS theme (--accent), so High-Contrast mode
+// re-colors the drawn overlay too, not just the DOM around it.
+const SKELETON_COLOR = getComputedStyle(document.documentElement)
+  .getPropertyValue("--accent").trim() || "#007AFF";
 
 // ---- Per-exercise config (CALIBRATE against a real body) ------------------
 // joints: [a,b,c] landmark indices for the tracked angle, left and right.
@@ -269,7 +297,7 @@ function loop(){
       // landmarks if the model didn't return them this frame).
       const wl=(result.worldLandmarks&&result.worldLandmarks[0])?result.worldLandmarks[0]:lm;
       if(!drawingUtils) drawingUtils=new DrawingUtils(ctx);
-      drawingUtils.drawConnectors(lm,PoseLandmarker.POSE_CONNECTIONS,{color:"#007AFF",lineWidth:4});
+      drawingUtils.drawConnectors(lm,PoseLandmarker.POSE_CONNECTIONS,{color:SKELETON_COLOR,lineWidth:4});
       drawingUtils.drawLandmarks(lm,{color:"#FFFFFF",radius:4});
 
       const la=angleOf(wl,lm,cur.L), ra=angleOf(wl,lm,cur.R);

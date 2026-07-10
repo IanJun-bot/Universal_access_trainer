@@ -17,6 +17,20 @@
     --color-btn-primary-hover: #E6E600;
     --color-success: #00FF66;
     --color-error: #FF5C4D;
+    --color-warning: #FF9F0A;
+    /* Kill the soft glows (no translucent color in strict HC) and swap the
+       translucent tints for hard black-fill + solid borders. The focus ring
+       stays visible -- it becomes a solid yellow halo. */
+    --focus-ring: rgba(255, 255, 0, 0.55);
+    --glow-accent: transparent;
+    --glow-accent-soft: transparent;
+    --glow-success: transparent;
+    --tint-accent: #000000;
+    --tint-accent-border: #FFFF00;
+    --tint-success: #000000;
+    --tint-success-border: #00FF66;
+    --tint-warning: #000000;
+    --tint-warning-border: #FF9F0A;
 }
 
 /* Yellow buttons carry black text (declared below); the dark kbd chip from

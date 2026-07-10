@@ -42,7 +42,7 @@ from vision_form_checker import check_form, check_form_sequence, VISION_MODEL
 from claude_vision import check_form_with_claude, check_form_sequence_with_claude
 from video_frames import extract_frames
 from model_manager import switch_to
-from pose_tracker import POSE_TRACKER_HTML, POSE_TRACKER_HEIGHT
+from pose_tracker import POSE_TRACKER_HTML, POSE_TRACKER_HEIGHT, TRACKER_HC_CSS
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -748,13 +748,19 @@ def render_live_tracker() -> None:
     with st.container(border=True):
         st.subheader("Live Tracker")
         st.caption(
-            "Real-time squat coaching for squats: skeleton overlay, depth, and a rep counter "
-            "that also checks each rep for depth, knee tracking, and tempo. Feedback shows as "
-            "big text AND is spoken aloud, so it works for blind and deaf users alike. Control "
-            "your set hands-free -- cross your arms to end a set, wave both hands overhead to "
-            "start the next. Runs entirely in your browser: no frames ever leave your machine."
+            "Real-time coaching for four exercises: skeleton overlay, range-of-motion bar, and "
+            "a rep counter that also checks each rep for depth, symmetry, knee tracking, and "
+            "tempo. Feedback shows as big text AND is spoken aloud, so it works for blind and "
+            "deaf users alike. Sets are hands-free: a set starts on your first rep and ends "
+            "when you pause (or cross your arms in an X). Runs entirely in your browser: no "
+            "frames ever leave your machine."
         )
-        st_html(POSE_TRACKER_HTML, height=POSE_TRACKER_HEIGHT)
+        # The tracker lives in an iframe, which sees none of the app's CSS --
+        # inject the High-Contrast theme into its <style> when the mode is on.
+        tracker_html = POSE_TRACKER_HTML.replace(
+            "/*THEME_OVERRIDE*/", TRACKER_HC_CSS if st.session_state.get("high_contrast_toggle") else ""
+        )
+        st_html(tracker_html, height=POSE_TRACKER_HEIGHT)
 
 
 def render_start_over() -> None:
