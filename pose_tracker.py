@@ -32,7 +32,7 @@ testing, and to tune each exercise separately.
 Same secure-origin rule as the camera/mic: the webcam needs localhost/HTTPS.
 """
 
-POSE_TRACKER_HEIGHT = 800
+POSE_TRACKER_HEIGHT = 980
 
 # High-Contrast override for the tracker iframe. Iframes see none of the
 # parent page's CSS, so the app injects this in place of /*THEME_OVERRIDE*/
@@ -48,6 +48,9 @@ TRACKER_HC_CSS = """
   select { border-color: #FFFF00 !important; }
   .stage { border: 2px solid #FFFF00 !important; }
   .chip, .cue, .form { border: 1px solid #FFFF00; }
+  .kin { border: 2px solid #FFFF00 !important; }
+  .kin-phase { border-color: #FFFF00 !important; }
+  .kin-bar { background: #1a1a1a !important; }
 """
 
 # Kept as a plain string (not an f-string) -- the JS is full of braces.
@@ -88,6 +91,20 @@ POSE_TRACKER_HTML = r"""
   .hints { font-size: 14px; color: var(--muted); line-height: 1.5; }
   .hints b { color: var(--text); }
   .sound { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); cursor: pointer; user-select: none; }
+  /* Live joint kinematics readout (golf-launch-monitor style): one row per
+     tracked quantity -- label, range bar, numeric degrees. */
+  .kin { background: var(--surface); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .kin-head { display: flex; align-items: center; gap: 10px; }
+  .kin-title { font-family: var(--font-display); font-weight: 700; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .kin-phase { font-family: var(--font-display); font-weight: 700; font-size: 14px; letter-spacing: 0.08em; background: var(--chipbg); border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; padding: 2px 10px; min-width: 64px; text-align: center; }
+  .kin-clock { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .kin-row { display: grid; grid-template-columns: 128px 1fr 72px; gap: 10px; align-items: center; }
+  .kin-label { font-size: 13px; color: var(--muted); }
+  .kin-bar { height: 8px; background: rgba(255,255,255,0.10); border-radius: 4px; overflow: hidden; }
+  .kin-fill { height: 100%; width: 0%; background: var(--accent); transition: width 60ms linear, background 200ms; }
+  .kin-val { font-family: var(--font-display); font-size: 18px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .kin-lastrep { font-size: 13px; color: var(--muted); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; }
+  .kin-lastrep b { color: var(--text); font-variant-numeric: tabular-nums; }
   /*THEME_OVERRIDE*/
 </style>
 </head>
@@ -117,6 +134,18 @@ POSE_TRACKER_HTML = r"""
     <div class="cue" id="cue" style="display:none"></div>
     <div class="form" id="form">Pick an exercise, then stand back so the joints being tracked are all in frame.</div>
   </div>
+  <!-- aria-hidden: this panel repaints ~30x/second, which would flood a
+       screen reader -- the spoken per-rep feedback is the accessible channel
+       for the same information. -->
+  <div class="kin" id="kin" aria-hidden="true">
+    <div class="kin-head">
+      <span class="kin-title">Live joint data</span>
+      <span class="kin-phase" id="kinPhase">REST</span>
+      <span class="kin-clock" id="kinClock">t=0.00s&nbsp;&nbsp;f0</span>
+    </div>
+    <div id="kinRows"></div>
+    <div class="kin-lastrep" id="kinLast">Last rep: — complete a rep to see its peak angle, left/right gap, and descent time (use these to calibrate the thresholds).</div>
+  </div>
   <div class="statusbar" id="status" role="status">Loading pose model (first load downloads ~6MB)...</div>
   <div class="hints">
     <b>Sets are automatic:</b> a new set begins on your <b>first rep</b>, and ends when you <b>stop for a few seconds</b> (or cross your arms in an X) &mdash; it then reads out your rep count.
@@ -140,19 +169,31 @@ const SKELETON_COLOR = getComputedStyle(document.documentElement)
 // romGood/romShallow: full range vs. too-short range, for depth feedback.
 // rest/full: angles mapping the range bar 0%->100%.
 // valgus: squat-only knee-tracking check.
+// tiltWarn: spine-tilt (degrees from vertical) beyond which the live data
+//   panel flags the torso row -- a forward lean is normal in a squat but is
+//   a cheat/arch signal in the arm exercises.
+// Squat/curl thresholds re-baselined July 2026 for 3D world-landmark angles,
+// applying the compression the press taught us (extremes read ~10-15 deg
+// less extreme in 3D than 2D): deep-flexion targets loosened accordingly.
+// VERIFY against the live data panel's "Last rep" peak readout on a real
+// body, then pin the numbers.
 const EX = {
   squat: { name:"Squat", angLabel:"Knee", L:[23,25,27], R:[24,26,28], dir:"below",
-    enter:140, exit:155, romGood:95, romShallow:115, rest:170, full:90, valgus:true,
-    romMsg:"Go deeper next rep", romSay:"Go deeper" },
+    // Calibrated 2026-07-22 against a real body: honest full-depth bottom
+    // read peak 122 deg on 3D world landmarks -- romGood sits ~4 deg above.
+    enter:140, exit:155, romGood:126, romShallow:135, rest:170, full:118, valgus:true,
+    tiltWarn:50, romMsg:"Go deeper next rep", romSay:"Go deeper" },
   curl:  { name:"Bicep curl", angLabel:"Elbow", L:[11,13,15], R:[12,14,16], dir:"below",
-    enter:90, exit:150, romGood:55, romShallow:85, rest:160, full:45, valgus:false,
-    romMsg:"Curl all the way up", romSay:"Curl higher" },
+    // Calibrated 2026-07-22 against a real body: honest full-squeeze top
+    // read peak 68 deg on 3D world landmarks -- romGood sits ~4 deg above.
+    enter:100, exit:150, romGood:72, romShallow:95, rest:155, full:64, valgus:false,
+    tiltWarn:15, romMsg:"Curl all the way up", romSay:"Curl higher" },
   press: { name:"Overhead press", angLabel:"Elbow", L:[11,13,15], R:[12,14,16], dir:"above",
     enter:125, exit:105, romGood:150, romShallow:130, rest:90, full:160, valgus:false,
-    romMsg:"Press all the way up", romSay:"Press higher" },
+    tiltWarn:15, romMsg:"Press all the way up", romSay:"Press higher" },
   raise: { name:"Lateral raise", angLabel:"Shoulder", L:[23,11,13], R:[24,12,14], dir:"above",
     enter:70, exit:35, romGood:80, romShallow:60, rest:20, full:90, valgus:false,
-    romMsg:"Raise up to shoulder height", romSay:"Raise higher" },
+    tiltWarn:15, romMsg:"Raise up to shoulder height", romSay:"Raise higher" },
 };
 const CFG = {
   VIS:0.5, SYM_TOL:25, TEMPO_MIN_SEC:0.5, VALGUS_RATIO:0.80,
@@ -162,6 +203,7 @@ const CFG = {
 const $=(id)=>document.getElementById(id);
 const statusEl=$("status"),video=$("video"),canvas=$("overlay"),ctx=canvas.getContext("2d");
 const repsEl=$("reps"),setnEl=$("setn"),angleEl=$("angle"),angLabelEl=$("anglabel"),depthEl=$("depth"),cueEl=$("cue"),formEl=$("form"),soundToggle=$("soundToggle"),exsel=$("exsel");
+const kinPhaseEl=$("kinPhase"),kinClockEl=$("kinClock"),kinRowsEl=$("kinRows"),kinLastEl=$("kinLast");
 
 let landmarker=null,drawingUtils=null,lastVideoTime=-1;
 let cur=EX.squat;
@@ -192,6 +234,84 @@ function angleOf(wl, il, j){
   const dot=v1.x*v2.x+v1.y*v2.y+v1.z*v2.z, m1=Math.hypot(v1.x,v1.y,v1.z), m2=Math.hypot(v2.x,v2.y,v2.z);
   if(m1===0||m2===0) return null;
   return Math.acos(Math.min(1,Math.max(-1,dot/(m1*m2))))*180/Math.PI;
+}
+
+// ---- Live joint kinematics readout ---------------------------------------
+// Golf-launch-monitor-style data rows: per-joint angles, spine tilt, and the
+// left/right gap, live at camera rate. The "Last rep" line captures each
+// rep's peak angle / symmetry / descent time -- the numbers used to
+// calibrate the EX thresholds against a real body.
+function midpt(p,q){ return {x:(p.x+q.x)/2,y:(p.y+q.y)/2,z:(p.z+q.z)/2}; }
+// Torso tilt from vertical, in degrees, from 3D world landmarks. World y is
+// down-positive, so an upright hip->shoulder vector points along -y (tilt 0).
+function spineTiltDeg(wl,il){
+  if(!vis(il[11])||!vis(il[12])||!vis(il[23])||!vis(il[24])) return null;
+  const s=midpt(wl[11],wl[12]), h=midpt(wl[23],wl[24]);
+  const dx=s.x-h.x, dy=s.y-h.y, dz=s.z-h.z;
+  const horiz=Math.hypot(dx,dz);
+  if(horiz===0&&dy===0) return null;
+  return Math.atan2(horiz,-dy)*180/Math.PI;
+}
+// Row definitions. frac maps the value onto the 0..1 bar; color may return a
+// CSS value to recolor the fill (default accent).
+function kinRowDefs(){
+  const jointFrac=(v)=>Math.min(1,Math.max(0,(v-cur.rest)/(cur.full-cur.rest)));
+  const jointColor=(v)=>romOK(v)?"var(--success)":"var(--accent)";
+  const rows=[
+    { id:"L", label:cur.angLabel+" (L)", frac:jointFrac, color:jointColor },
+    { id:"R", label:cur.angLabel+" (R)", frac:jointFrac, color:jointColor },
+  ];
+  if(cur.valgus) rows.push({ id:"hip", label:"Hip angle", frac:jointFrac, color:()=> "var(--accent)" });
+  rows.push({ id:"tilt", label:"Spine tilt", frac:(v)=>Math.min(1,v/60),
+    color:(v)=> v>cur.tiltWarn?"var(--warn)":"var(--accent)" });
+  rows.push({ id:"sym", label:"L/R gap", frac:(v)=>Math.min(1,v/40),
+    color:(v)=> v>CFG.SYM_TOL?"var(--warn)":"var(--accent)" });
+  return rows;
+}
+let kinDefs=[],kinEls={};
+function rebuildKin(){
+  kinDefs=kinRowDefs(); kinEls={}; kinRowsEl.innerHTML="";
+  for(const d of kinDefs){
+    const row=document.createElement("div"); row.className="kin-row";
+    row.innerHTML='<span class="kin-label"></span><div class="kin-bar"><div class="kin-fill"></div></div><span class="kin-val">--</span>';
+    row.querySelector(".kin-label").textContent=d.label;
+    kinRowsEl.appendChild(row);
+    kinEls[d.id]={ fill:row.querySelector(".kin-fill"), val:row.querySelector(".kin-val") };
+  }
+}
+let kinFrame=0,angTrend=0,lastAngle=null;
+function updateKin(values,now){
+  kinFrame+=1;
+  kinClockEl.textContent="t="+video.currentTime.toFixed(2)+"s  f"+kinFrame;
+  for(const d of kinDefs){
+    const el=kinEls[d.id], v=values[d.id];
+    if(v===null||v===undefined||Number.isNaN(v)){ el.val.textContent="--"; el.fill.style.width="0%"; continue; }
+    el.val.textContent=Math.round(v)+"°";
+    el.fill.style.width=(d.frac(v)*100).toFixed(0)+"%";
+    el.fill.style.background=d.color(v);
+  }
+  // Phase from the smoothed angle trend: moving toward the contracted
+  // extreme = DOWN (squat/curl) or UP (press/raise); away = the reverse.
+  const a=values.primary;
+  if(a!==null&&a!==undefined){
+    if(lastAngle!==null) angTrend=0.7*angTrend+0.3*(a-lastAngle);
+    lastAngle=a;
+    let phase="REST";
+    if(active){
+      const towardExtreme = cur.dir==="below" ? angTrend<-0.5 : angTrend>0.5;
+      const awayFromExtreme = cur.dir==="below" ? angTrend>0.5 : angTrend<-0.5;
+      phase = towardExtreme ? (cur.dir==="below"?"DOWN":"UP")
+            : awayFromExtreme ? (cur.dir==="below"?"UP":"DOWN") : "HOLD";
+    }
+    kinPhaseEl.textContent=phase;
+  }
+}
+let sessionBest=null;
+function updateKinLastRep(descentSec){
+  if(sessionBest===null||better(repExtreme,sessionBest)) sessionBest=repExtreme;
+  kinLastEl.innerHTML="Last rep: peak <b>"+Math.round(repExtreme)+"°</b> · L/R gap <b>"
+    +Math.round(repSym)+"°</b> · <b>"+descentSec.toFixed(1)+"s</b> down · session best peak <b>"
+    +Math.round(sessionBest)+"°</b> (rep counts past "+cur.enter+"°, full range past "+cur.romGood+"°)";
 }
 
 // ---- Rep state machine + per-rep form metrics -----------------------------
@@ -226,6 +346,7 @@ function onRepComplete(){
     setAnnounce="Set "+setNum+". ";
   }
   reps+=1; repsEl.textContent=reps; lastRepTime=performance.now();
+  updateKinLastRep(Math.max(0,(bottomTime-descentStart)/1000));
   const f=evaluateRep();
   beep(f.good?880:520,0.12);
   say(setAnnounce + (f.say ? (reps+". "+f.say) : String(reps)));
@@ -267,6 +388,8 @@ function endSet(){
 // ---- Exercise switch (no camera restart) ----------------------------------
 exsel.addEventListener("change",()=>{
   cur=EX[exsel.value]; active=false; setStarted=false; reps=0; repsEl.textContent=0; angLabelEl.textContent=cur.angLabel;
+  rebuildKin(); lastAngle=null; angTrend=0; sessionBest=null;
+  kinLastEl.textContent="Last rep: — complete a rep to see its peak angle, left/right gap, and descent time.";
   say("Now tracking "+cur.name); showForm("Now tracking the "+cur.name+". Your next rep starts a new set.","var(--text)");
 });
 
@@ -280,7 +403,7 @@ async function init(){
   }catch(e){ statusEl.textContent="Couldn't load the pose model -- check your internet connection and refresh."; return; }
   statusEl.textContent="Starting camera...";
   try{ video.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:960,height:540}}); }
-  catch(e){ statusEl.textContent="Camera blocked. Use http://localhost:8501 (not a network address) and allow camera access."; return; }
+  catch(e){ statusEl.textContent="Camera blocked. Open the app at a localhost address (not a network IP) and allow camera access."; return; }
   video.addEventListener("loadeddata",()=>{ canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     statusEl.textContent="Tracking. Switch exercises above; sets start on your first rep, cross your arms to end one.";
     angLabelEl.textContent=cur.angLabel; requestAnimationFrame(loop); });
@@ -303,6 +426,15 @@ function loop(){
       const la=angleOf(wl,lm,cur.L), ra=angleOf(wl,lm,cur.R);
       const a=(la!==null&&ra!==null)?(cur.dir==="below"?Math.min(la,ra):Math.max(la,ra)):(la ?? ra);
       const sym=(la!==null&&ra!==null)?Math.abs(la-ra):0;
+
+      // Feed the live kinematics panel every processed frame.
+      const tilt=spineTiltDeg(wl,lm);
+      let hipA=null;
+      if(cur.valgus){
+        const lh=angleOf(wl,lm,[11,23,25]), rh=angleOf(wl,lm,[12,24,26]);
+        hipA=(lh!==null&&rh!==null)?(lh+rh)/2:(lh ?? rh);
+      }
+      updateKin({L:la,R:ra,hip:hipA,tilt:tilt,sym:(la!==null&&ra!==null)?sym:null,primary:a},now);
 
       detectGestures(lm,now);
       // Reliable, gesture-free set end: if you've stopped repping for a few
@@ -331,6 +463,7 @@ function loop(){
   }
   requestAnimationFrame(loop);
 }
+rebuildKin();
 init();
 </script>
 </body>
