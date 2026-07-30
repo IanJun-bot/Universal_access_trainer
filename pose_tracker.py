@@ -105,10 +105,15 @@ POSE_TRACKER_HTML = r"""
   .kin-val { font-family: var(--font-display); font-size: 18px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
   .kin-lastrep { font-size: 13px; color: var(--muted); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; }
   .kin-lastrep b { color: var(--text); font-variant-numeric: tabular-nums; }
+  /* Off-screen but screen-reader-readable -- the SR-mode announcement channel. */
+  .visually-hidden { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
   /*THEME_OVERRIDE*/
 </style>
 </head>
 <body>
+<!-- SR-mode announcement channel: rate-limited, read by the user's own
+     screen reader instead of speechSynthesis (two voices collide). -->
+<div id="live" class="visually-hidden" role="status" aria-live="polite"></div>
 <div class="wrap">
   <div class="toprow">
     <label for="exsel">Exercise</label>
@@ -218,7 +223,22 @@ function beep(freq,dur){ if(!soundToggle.checked) return; ensureAudio(); if(!aud
     g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.25,t+0.01); g.gain.exponentialRampToValueAtTime(0.0001,t+d);
     o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t+d+0.02);
   }catch(e){} }
-function say(text){ if(!soundToggle.checked) return; try{ const u=new SpeechSynthesisUtterance(text); u.rate=1.1; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }
+// __SR_MODE__ is replaced at render time by app.py (true when the user has
+// Screen reader mode on). In SR mode the tracker must not speak with its own
+// voice -- the NVDA lesson -- so say() routes to the ARIA live region instead,
+// rate-limited so a screen reader isn't flooded (latest message wins).
+const SR_MODE = __SR_MODE__;
+const liveEl=$("live");
+let liveLast=0,liveTimer=null;
+function liveAnnounce(text){
+  const now=performance.now();
+  const post=()=>{ liveEl.textContent=text; liveLast=performance.now(); };
+  if(now-liveLast>=2000){ post(); }
+  else { clearTimeout(liveTimer); liveTimer=setTimeout(post, 2000-(now-liveLast)); }
+}
+function say(text){ if(!soundToggle.checked) return;
+  if(SR_MODE){ liveAnnounce(text); return; }
+  try{ const u=new SpeechSynthesisUtterance(text); u.rate=1.1; speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(e){} }
 
 // ---- Geometry -------------------------------------------------------------
 function vis(p){ return p && (p.visibility ?? 1) >= CFG.VIS; }
@@ -385,6 +405,51 @@ function endSet(){
   setStarted=false;
 }
 
+// ---- Audio framing guidance (Phase 1, non-visual tracker spec) ------------
+// A blind user can't see whether they're in frame. The tracker already knows
+// which required joints are visible -- this turns that into directional
+// speech: spoken on state CHANGE, repeated at most every 4s while held, and
+// silent once framed (a chime marks the transition). Directions are given in
+// the USER'S frame of reference: joints cut off past the image-left edge
+// mean the user should step to their own left (which moves their image
+// right), and vice versa.
+const GUIDE={ REPEAT_MS:4000, MARGIN:0.04, state:"", lastSpoke:0 };
+function frameGuidance(lm){
+  if(!lm) return { state:"NONE", msg:"No one in view. Step in front of the camera.", err:true };
+  const need=[...new Set([...cur.L, ...cur.R])], m=GUIDE.MARGIN;
+  let offL=0, offR=0, offV=0, missing=0;
+  for(const i of need){
+    const p=lm[i];
+    if(!p){ missing+=1; continue; }
+    const out = !vis(p) || p.x<m || p.x>1-m || p.y<m || p.y>1-m;
+    if(!out) continue;
+    missing+=1;
+    if(p.x<m) offL+=1; else if(p.x>1-m) offR+=1; else offV+=1;
+  }
+  if(missing===0) return { state:"FRAMED", msg:"" };
+  let msg="Step back so your whole body is in view.";
+  if(offL>offR && offL>=offV) msg="Move to your left.";
+  else if(offR>offL && offR>=offV) msg="Move to your right.";
+  return { state:"PART:"+msg, msg, err:false };
+}
+function updateGuidance(lm, now){
+  const g=frameGuidance(lm);
+  const changed=g.state!==GUIDE.state;
+  GUIDE.state=g.state;
+  // Never talk over fresh rep feedback -- framing cues can wait 2.5s.
+  const repBusy = setStarted && lastRepTime && (now-lastRepTime<2500);
+  if(g.state==="FRAMED"){
+    if(changed){
+      beep(1175,0.09); setTimeout(()=>beep(1568,0.12),110);
+      if(!repBusy) say("You're in frame.");
+      showForm(setStarted?"In frame.":"In frame. Begin when you're ready -- your first rep starts the set.","var(--success)");
+    }
+    return;
+  }
+  if(now>=gestureCooldownUntil) showForm(g.msg, g.err?"var(--error)":"var(--warn)");
+  if(!repBusy && (changed || now-GUIDE.lastSpoke>=GUIDE.REPEAT_MS)){ say(g.msg); GUIDE.lastSpoke=now; }
+}
+
 // ---- Exercise switch (no camera restart) ----------------------------------
 exsel.addEventListener("change",()=>{
   cur=EX[exsel.value]; active=false; setStarted=false; reps=0; repsEl.textContent=0; angLabelEl.textContent=cur.angLabel;
@@ -406,6 +471,9 @@ async function init(){
   catch(e){ statusEl.textContent="Camera blocked. Open the app at a localhost address (not a network IP) and allow camera access."; return; }
   video.addEventListener("loadeddata",()=>{ canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     statusEl.textContent="Tracking. Switch exercises above; sets start on your first rep, cross your arms to end one.";
+    // Spoken once at camera start: a blind user can't visually verify what
+    // the camera sees, so the privacy guarantee has to be said, not printed.
+    say("Camera is on. Video stays on this computer and is never uploaded. I'll guide you into frame.");
     angLabelEl.textContent=cur.angLabel; requestAnimationFrame(loop); });
 }
 function loop(){
@@ -422,6 +490,8 @@ function loop(){
       if(!drawingUtils) drawingUtils=new DrawingUtils(ctx);
       drawingUtils.drawConnectors(lm,PoseLandmarker.POSE_CONNECTIONS,{color:SKELETON_COLOR,lineWidth:4});
       drawingUtils.drawLandmarks(lm,{color:"#FFFFFF",radius:4});
+
+      updateGuidance(lm,now);
 
       const la=angleOf(wl,lm,cur.L), ra=angleOf(wl,lm,cur.R);
       const a=(la!==null&&ra!==null)?(cur.dir==="below"?Math.min(la,ra):Math.max(la,ra)):(la ?? ra);
@@ -458,8 +528,8 @@ function loop(){
           if(sym>repSym) repSym=sym; if(valgus<repValgus) repValgus=valgus;
           if(isRest(a)){ active=false; onRepComplete(); }
         }
-      } else { angleEl.textContent="--"; if(now>=gestureCooldownUntil) showForm("Step back so the tracked joints are fully in frame.","var(--warn)"); }
-    } else { angleEl.textContent="--"; if(now>=gestureCooldownUntil) showForm("No one in frame -- step in front of the camera.","var(--error)"); crossHold=0; }
+      } else { angleEl.textContent="--"; }  // guidance above already messaged and spoke
+    } else { updateGuidance(null,now); angleEl.textContent="--"; crossHold=0; }
   }
   requestAnimationFrame(loop);
 }

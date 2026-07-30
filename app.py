@@ -755,11 +755,13 @@ def render_live_tracker() -> None:
             "when you pause (or cross your arms in an X). Runs entirely in your browser: no "
             "frames ever leave your machine."
         )
-        # The tracker lives in an iframe, which sees none of the app's CSS --
-        # inject the High-Contrast theme into its <style> when the mode is on.
+        # The tracker lives in an iframe, which sees none of the app's CSS or
+        # state -- inject the High-Contrast theme and the screen-reader flag
+        # at render time. In SR mode the tracker stays silent and posts its
+        # announcements to an ARIA live region instead (two-voices lesson).
         tracker_html = POSE_TRACKER_HTML.replace(
             "/*THEME_OVERRIDE*/", TRACKER_HC_CSS if st.session_state.get("high_contrast_toggle") else ""
-        )
+        ).replace("__SR_MODE__", "true" if _sr_mode() else "false")
         st_html(tracker_html, height=POSE_TRACKER_HEIGHT)
 
 
